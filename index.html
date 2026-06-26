@@ -332,12 +332,13 @@ DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO:
         body: JSON.stringify(payload)
       });
 
+      const data = await response.json();
+
       if(!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `Error del servidor HTTP: ${response.status}`);
+        const msg = data?.error?.message || data?.error?.metadata?.raw || JSON.stringify(data?.error) || `HTTP ${response.status}`;
+        throw new Error(msg);
       }
 
-      const data = await response.json();
       // Limpiar posibles bloques markdown antes de parsear
       let texto = data.choices[0].message.content;
       texto = texto.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
