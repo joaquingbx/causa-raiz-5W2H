@@ -160,11 +160,11 @@
       <div class="logo">🔍</div>
       <h1>Analizador de Causa Raíz</h1>
       <p>Entorno de escritorio profesional para la resolución de problemas complejos mediante marcos metodológicos asistidos por IA.</p>
-      <input id="api-input" type="password" placeholder="Introduce la API Key de Gemini (AIzaSy...)" autocomplete="off" autocorrect="off" spellcheck="false"/>
+      <input id="api-input" type="password" placeholder="Introduce la API Key de OpenRouter (sk-or-...)" autocomplete="off" autocorrect="off" spellcheck="false"/>
       <button id="btn-start">Iniciar Consola de Análisis →</button>
       <p class="setup-note">
         Tu clave de API se almacena a nivel local en tu navegador.<br>
-        Consigue credenciales en <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>
+        Consigue credenciales gratuitas en <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
       </p>
     </div>
   </div>
@@ -304,27 +304,30 @@ DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO:
 
     document.getElementById('btn-nuevo').addEventListener('click', () => location.reload());
 
-    // ─── LLAMADAS A GEMINI API ───────────────────
+    // ─── LLAMADAS A OPENROUTER API ───────────────────
     async function llamarGemini(systemInstruction, history, nuevoMensaje) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${APIKEY}`;
-      
-      let contents = [];
+      const url = 'https://openrouter.ai/api/v1/chat/completions';
+
+      let messages = [{ role: 'system', content: systemInstruction }];
       history.forEach(h => {
-        contents.push({ role: h.role, parts: [{ text: h.text }] });
+        messages.push({ role: h.role === 'model' ? 'assistant' : h.role, content: h.text });
       });
-      contents.push({ role: 'user', parts: [{ text: nuevoMensaje }] });
+      messages.push({ role: 'user', content: nuevoMensaje });
 
       const payload = {
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents: contents,
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
+        model: 'meta-llama/llama-3.3-70b-instruct:free',
+        messages: messages,
+        response_format: { type: 'json_object' }
       };
 
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${APIKEY}`,
+          'HTTP-Referer': 'https://joaquingbx.github.io/causa-raiz-5W2H/',
+          'X-Title': 'Analizador Causa Raiz 5W2H'
+        },
         body: JSON.stringify(payload)
       });
 
@@ -334,7 +337,7 @@ DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO:
       }
 
       const data = await response.json();
-      return data.candidates[0].content.parts[0].text;
+      return data.choices[0].message.content;
     }
 
     // ─── LÓGICA DEL PROCESO ───────────────────────
