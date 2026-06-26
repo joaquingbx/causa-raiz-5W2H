@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"/>
+  <title>Analizador de Causa Raíz - Desktop</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:      #0C0E14;
+      --card:    #13161F;
+      --border:  #1E2230;
+      --accent:  #7B6EF6;
+      --green:   #1FD98A;
+      --warn:    #F5A623;
+      --danger:  #F06464;
+      --text:    #E6E8F0;
+      --muted:   #6B7080;
+      --radius:  12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── FIX SCROLL PC: html/body fijos, solo #chat scrollea ── */
+    html, body {
+      height: 100%; height: 100dvh;
+      overflow: hidden;
+      background: var(--bg); color: var(--text);
+      touch-action: manipulation;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* ── SETUP ── */
+    #setup {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 40px; gap: 24px; z-index: 100; overflow-y: auto;
+    }
+    #setup .setup-container {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 40px; max-width: 500px; width: 100%; text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,.5);
+    }
+    .logo { font-size: 3.5rem; margin-bottom: 16px; }
+    h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px; }
+    #setup p { color: var(--muted); font-size: .9rem; line-height: 1.6; margin-bottom: 24px; }
+    #api-input {
+      width: 100%; padding: 14px 16px; background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 10px; color: #fff; font-family: monospace; font-size: .9rem;
+      margin-bottom: 16px; text-align: center; transition: border-color .2s; outline: none;
+    }
+    #api-input:focus { border-color: var(--accent); }
+    #btn-start {
+      width: 100%; padding: 14px; background: var(--accent); border: none; border-radius: 10px;
+      color: #fff; font-weight: 600; font-size: 1rem; cursor: pointer; transition: opacity .2s;
+    }
+    #btn-start:hover { opacity: .9; }
+    .setup-note { font-size: .8rem !important; margin-top: 16px; line-height: 1.5; color: var(--muted); }
+    .setup-note a { color: var(--accent); text-decoration: none; }
+    .setup-note a:hover { text-decoration: underline; }
+
+    /* ── RESTORE BANNER ── */
+    #restore-banner {
+      display: none; margin-top: 16px;
+      background: rgba(123,110,246,.1); border: 1px solid var(--accent);
+      border-radius: 10px; padding: 14px 16px; text-align: left; width: 100%;
+    }
+    #restore-banner p { color: var(--text); font-size: .85rem; margin-bottom: 12px; line-height: 1.5; }
+    .restore-btns { display: flex; gap: 8px; }
+    .btn-restore { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; font-size: .85rem; font-weight: 600; }
+    .btn-restore.primary { background: var(--accent); color: #fff; }
+    .btn-restore.secondary { background: var(--border); color: var(--muted); }
+
+    /* ── APP LAYOUT ── */
+    #app {
+      display: none;
+      height: 100dvh;
+      grid-template-columns: 1fr 380px;
+      background: var(--bg);
+      overflow: hidden; /* FIX: el grid no scrollea, solo sus hijos */
+    }
+
+    /* ── COLUMNA CHAT ── */
+    .main-chat-container {
+      display: flex; flex-direction: column;
+      height: 100dvh; /* FIX: altura fija */
+      min-height: 0;
+      border-right: 1px solid var(--border);
+      overflow: hidden; /* FIX: no deja salir contenido */
+    }
+
+    #header {
+      padding: 14px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      background: var(--card); flex-shrink: 0; /* FIX: header no se encoge */
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+    .header-left h1 { font-size: 1.1rem; font-weight: 700; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+    /* Indicador de fase */
+    #fase-indicator {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .fase-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--border); transition: all .3s;
+    }
+    .fase-dot.activa { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .fase-dot.hecha  { background: var(--green); }
+    .fase-label {
+      font-size: .72rem; color: var(--muted); font-weight: 600;
+      white-space: nowrap; letter-spacing: .3px;
+    }
+
+    #badge {
+      padding: 4px 12px; background: var(--accent); color: #fff;
+      border-radius: 20px; font-size: .75rem; font-weight: 700; letter-spacing: .3px;
+      transition: all .3s; white-space: nowrap;
+    }
+    #badge.fase2 { background: var(--warn); color: #000; }
+    #badge.done  { background: var(--green); color: #000; }
+
+    /* ── CHAT ── */
+    #chat {
+      flex: 1;
+      min-height: 0; /* FIX CLAVE: permite que flex child tenga scroll */
+      overflow-y: auto; /* FIX: SOLO este elemento scrollea */
+      -webkit-overflow-scrolling: touch;
+      padding: 24px;
+      display: flex; flex-direction: column; gap: 16px;
+      background: var(--bg);
+      scroll-behavior: smooth;
+    }
+
+    .burbuja {
+      max-width: 75%; padding: 14px 18px; border-radius: var(--radius);
+      font-size: .95rem; line-height: 1.6; word-break: break-word; animation: pop .2s ease;
+    }
+    @keyframes pop { from{opacity:0;transform:scale(.98) translateY(5px)} to{opacity:1;transform:none} }
+    .burbuja.ia { background: var(--card); border: 1px solid var(--border); align-self: flex-start; border-top-left-radius: 2px; }
+    .burbuja.user { background: var(--accent); color: #fff; align-self: flex-end; border-top-right-radius: 2px; position: relative; padding-right: 36px; }
+    .btn-edit-msg { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.2); border: none; border-radius: 6px; color: #fff; cursor: pointer; font-size: .75rem; padding: 2px 6px; opacity: 0; transition: opacity .2s; }
+    .burbuja.user:hover .btn-edit-msg { opacity: 1; }
+    .burbuja.user.editing { background: var(--card); color: var(--text); border: 1px solid var(--accent); padding: 8px; }
+    .edit-textarea { width: 100%; background: transparent; border: none; color: var(--text); font-size: .95rem; line-height: 1.6; resize: none; outline: none; font-family: inherit; }
+    .edit-actions { display: flex; gap: 8px; margin-top: 6px; justify-content: flex-end; }
+    .btn-edit-ok { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: .8rem; }
+    .btn-edit-cancel { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: .8rem; }
+    .burbuja.rechazo { border-color: var(--danger); background: rgba(240,100,100,.06); align-self: flex-start; border: 1px solid var(--danger); }
+    .burbuja.especial { border-color: var(--accent); background: rgba(123,110,246,.06); max-width: 100%; width: 100%; border: 1px solid var(--accent); }
+
+    .enunciado-box { margin-top: 12px; background: rgba(123,110,246,0.1); border: 1px solid var(--accent); border-radius: 10px; padding: 14px; text-align: left; }
+    .enunciado-box h3 { font-size: .75rem; color: var(--accent); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+    .causa-raiz-box { background: linear-gradient(135deg, rgba(31,217,138,.1), rgba(123,110,246,.1)); border: 2px solid var(--green); border-radius: 12px; padding: 20px; text-align: center; margin: 10px 0; width: 100%; }
+    .causa-raiz-box h2 { font-size: 1.2rem; color: var(--green); margin-bottom: 8px; }
+    .rechazo-lbl { font-weight: 700; color: var(--danger); margin-bottom: 6px; font-size: .85rem; text-transform: uppercase; }
+
+    /* ── INPUT ── */
+    #input-area {
+      padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border); background: var(--card);
+      flex-shrink: 0; /* FIX: input no se encoge */
+    }
+    .input-row { display: flex; gap: 12px; align-items: flex-end; max-width: 100%; }
+    #msg {
+      flex: 1; background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 10px; padding: 12px 16px; color: var(--text);
+      font-size: .95rem; resize: none; min-height: 46px; max-height: 200px;
+      font-family: inherit; line-height: 1.5; outline: none; transition: border-color .2s;
+    }
+    #msg:focus { border-color: var(--accent); }
+    .btn-ico {
+      width: 46px; height: 46px; border-radius: 10px; border: none; background: none;
+      color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all .2s; flex-shrink: 0; font-size: 1.2rem;
+    }
+    #btn-send { background: var(--accent); color: #fff; }
+    #btn-send:hover { opacity: .9; }
+    #btn-send:disabled { background: var(--border); color: var(--muted); cursor:not-allowed; }
+    #btn-mic { background: var(--bg); border: 1.5px solid var(--border); color: var(--muted); }
+    #btn-mic:hover { color: var(--text); border-color: var(--muted); }
+    #btn-mic.rec { color: var(--danger); background: rgba(240,100,100,.15); border-color: var(--danger); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% {box-shadow: 0 0 0 0 rgba(240,100,100,0.4)} 50% {box-shadow: 0 0 0 6px rgba(240,100,100,0)} }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      background: var(--card);
+      padding: 20px;
+      overflow-y: auto; /* sidebar tiene su propio scroll */
+      display: flex; flex-direction: column; gap: 18px;
+      height: 100dvh; /* FIX: altura fija */
+    }
+    .panel-section { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+    .panel-section h2 { font-size: .8rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+
+    /* Criticidad */
+    .criticidad-btns { display: flex; gap: 8px; }
+    .btn-crit {
+      flex: 1; padding: 8px 6px; border-radius: 8px; border: 1.5px solid var(--border);
+      background: transparent; color: var(--muted); font-size: .8rem; font-weight: 600;
+      cursor: pointer; transition: all .2s; text-align: center;
+    }
+    .btn-crit:hover { border-color: var(--muted); color: var(--text); }
+    .btn-crit.selected-baja  { border-color: var(--green); background: rgba(31,217,138,.1); color: var(--green); }
+    .btn-crit.selected-media { border-color: var(--warn); background: rgba(245,166,35,.1); color: var(--warn); }
+    .btn-crit.selected-alta  { border-color: var(--danger); background: rgba(240,100,100,.1); color: var(--danger); }
+
+    /* 5W2H */
+    #prog-5w2h { display: flex; flex-direction: column; gap: 8px; }
+    .wtag {
+      background: var(--card); border: 1.5px solid var(--border); padding: 9px 12px;
+      border-radius: 8px; display: flex; justify-content: space-between; align-items: center;
+      font-size: .82rem; font-weight: 600; color: var(--muted); transition: all .3s ease;
+    }
+    .wtag .w-status { font-size: .72rem; background: var(--border); padding: 2px 8px; border-radius: 4px; color: var(--muted); }
+    .wtag.ok { border-color: var(--green); color: var(--green); background: rgba(31,217,138,.04); }
+    .wtag.ok .w-status { background: var(--green); color: #000; }
+
+    /* 5 Porqués */
+    #prog-porques { display: flex; flex-direction: column; opacity: .4; pointer-events: none; transition: opacity .3s; }
+    #prog-porques.active { opacity: 1; }
+    .p-row { display: flex; align-items: center; gap: 14px; }
+    .pstep {
+      width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center; background: var(--card);
+      font-size: .85rem; font-weight: 700; color: var(--muted); transition: all .3s; flex-shrink: 0;
+    }
+    .pstep.activo { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(123,110,246,.3); }
+    .pstep.hecho  { background: var(--green); border-color: var(--green); color: #000; }
+    .p-text { font-size: .82rem; color: var(--muted); font-weight: 500; }
+    .pstep.activo + .p-text { color: var(--accent); font-weight: 600; }
+    .pstep.hecho  + .p-text { color: var(--green); }
+    .pconn { width: 2px; height: 20px; background: var(--border); margin-left: 15px; transition: background .4s; }
+    .pconn.hecho { background: var(--green); }
+
+    /* Botones del sidebar */
+    .sidebar-btn {
+      width: 100%; padding: 11px 14px; border-radius: 9px; border: 1px solid var(--border);
+      background: transparent; color: var(--text); font-size: .85rem; font-weight: 600;
+      cursor: pointer; transition: all .2s; text-align: left; display: flex; align-items: center; gap: 8px;
+    }
+    .sidebar-btn:hover { background: var(--border); }
+    .sidebar-btn.accent { border-color: var(--accent); color: var(--accent); }
+    .sidebar-btn.accent:hover { background: rgba(123,110,246,.1); }
+    .sidebar-btn.danger  { border-color: var(--danger); color: var(--danger); }
+    .sidebar-btn.danger:hover  { background: rgba(240,100,100,.08); }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(60px);
+      background: var(--green); color: #000; font-size: .85rem; font-weight: 700;
+      padding: 10px 22px; border-radius: 30px; z-index: 999;
+      transition: transform .3s ease, opacity .3s ease; opacity: 0; pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* Typing */
+    .typing { display: flex; gap: 5px; padding: 4px 0; align-items: center; }
+    .typing span { width: 8px; height: 8px; background: var(--muted); border-radius: 50%; animation: bounce 1.2s infinite; display: block; }
+    .typing span:nth-child(2) { animation-delay: .2s; }
+    .typing span:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce { 0%,60%,100% {transform:translateY(0)} 30% {transform:translateY(-6px)} }
+
+    #btn-nuevo {
+      padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--text); font-size: .8rem; cursor: pointer; transition: background .2s;
+    }
+    #btn-nuevo:hover { background: var(--border); }
+
+    @media (max-width: 900px) {
+      #app { grid-template-columns: 1fr; }
+      #sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="toast">¡Copiado al portapapeles!</div>
+
+<!-- ══ SETUP ══ -->
+<div id="setup">
+  <div class="setup-container">
+    <div class="logo">🔍</div>
+    <h1>Analizador de Causa Raíz</h1>
+    <p>Entorno de escritorio profesional para la resolución de problemas complejos mediante marcos metodológicos asistidos por IA.</p>
+    <input id="api-input" type="password" placeholder="API Key de OpenRouter (sk-or-...)" autocomplete="off" autocorrect="off" spellcheck="false"/>
+    <button id="btn-start">Iniciar Consola de Análisis →</button>
+    <div id="restore-banner">
+      <p>🔄 Se encontró un análisis guardado. ¿Deseas continuar donde lo dejaste?</p>
+      <div class="restore-btns">
+        <button class="btn-restore primary" id="btn-restore-yes">Restaurar sesión</button>
+        <button class="btn-restore secondary" id="btn-restore-no">Empezar de cero</button>
+      </div>
+    </div>
+    <p class="setup-note">
+      Tu clave se guarda localmente en tu navegador.<br>
+      Consigue credenciales gratuitas en <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
+    </p>
+  </div>
+</div>
+
+<!-- ══ APP ══ -->
+<div id="app">
+
+  <!-- Columna izquierda: chat -->
+  <div class="main-chat-container">
+    <div id="header">
+      <div class="header-left">
+        <span>🔍</span>
+        <h1>Análisis de Causa Raíz</h1>
+        <!-- Indicador de fase -->
+        <div id="fase-indicator">
+          <div class="fase-dot activa" id="fd-config"></div>
+          <div class="fase-dot" id="fd-5w2h"></div>
+          <div class="fase-dot" id="fd-5p"></div>
+          <div class="fase-dot" id="fd-done"></div>
+          <span class="fase-label" id="fase-label-text">Configuración</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="badge">Fase 1 · Definición 5W2H</span>
+        <button id="btn-nuevo">🔄 Reiniciar</button>
+      </div>
+    </div>
+
+    <div id="chat"></div>
+
+    <div id="input-area">
+      <div class="input-row">
+        <button id="btn-mic" class="btn-ico" title="Dictar por voz">🎤</button>
+        <textarea id="msg" rows="1" placeholder="Escribe una respuesta técnica..."></textarea>
+        <button id="btn-send" class="btn-ico" title="Enviar mensaje">➔</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Columna derecha: sidebar -->
+  <div id="sidebar">
+
+    <!-- Criticidad -->
+    <div class="panel-section">
+      <h2>Criticidad del Problema</h2>
+      <div class="criticidad-btns">
+        <button class="btn-crit" id="crit-baja"  onclick="setCriticidad('baja')">Baja 🟢</button>
+        <button class="btn-crit" id="crit-media" onclick="setCriticidad('media')">Media 🟡</button>
+        <button class="btn-crit" id="crit-alta"  onclick="setCriticidad('alta')">Alta 🔴</button>
+      </div>
+    </div>
+
+    <!-- 5W2H -->
+    <div class="panel-section">
+      <h2>Matriz de Definición (5W2H)</h2>
+      <div id="prog-5w2h">
+        <div class="wtag" id="t-WHAT"><span>QUÉ (What)</span><span class="w-status">Pendiente</span></div>
+        <div class="wtag" id="t-WHY"><span>POR QUÉ (Why)</span><span class="w-status">Pendiente</span></div>
+        <div class="wtag" id="t-WHERE"><span>DÓNDE (Where)</span><span class="w-status">Pendiente</span></div>
+        <div class="wtag" id="t-WHEN"><span>CUÁNDO (When)</span><span class="w-status">Pendiente</span></div>
+        <div class="wtag" id="t-WHO"><span>QUIÉN (Who)</span><span class="w-status">Pendiente</span></div>
+        <div class="wtag" id="t-HOW"><span>CÓMO (How)</span><span class="w-status">Pendiente</span></div>
+        <div class="wtag" id="t-HOW_MUCH"><span>CUÁNTO (How Much)</span><span class="w-status">Pendiente</span></div>
+      </div>
+    </div>
+
+    <!-- 5 Porqués -->
+    <div class="panel-section">
+      <h2>Cadena de Causalidad (5 Porqués)</h2>
+      <div id="prog-porques">
+        <div class="p-row"><div class="pstep" id="p1">1</div><div class="p-text">Primer Porqué</div></div>
+        <div class="pconn" id="c1"></div>
+        <div class="p-row"><div class="pstep" id="p2">2</div><div class="p-text">Segundo Porqué</div></div>
+        <div class="pconn" id="c2"></div>
+        <div class="p-row"><div class="pstep" id="p3">3</div><div class="p-text">Tercer Porqué</div></div>
+        <div class="pconn" id="c3"></div>
+        <div class="p-row"><div class="pstep" id="p4">4</div><div class="p-text">Cuarto Porqué</div></div>
+        <div class="pconn" id="c4"></div>
+        <div class="p-row"><div class="pstep" id="p5">5</div><div class="p-text">Quinto Porqué</div></div>
+      </div>
+    </div>
+
+    <!-- Acciones -->
+    <div class="panel-section">
+      <h2>Exportar Análisis</h2>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="sidebar-btn accent" onclick="exportarPDF()">📄 Exportar Informe PDF</button>
+        <button class="sidebar-btn accent" onclick="copiarMarkdown()">📋 Copiar Análisis (Markdown)</button>
+      </div>
+    </div>
+
+    <!-- Reset total -->
+    <div class="panel-section">
+      <h2>Sesión</h2>
+      <button class="sidebar-btn danger" onclick="reiniciarTodo()">🗑️ Borrar todo y empezar de cero</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// ESTADO
+// ═══════════════════════════════════════════════
+let APIKEY = '';
+let fase = '5W2H';
+let historial5w2h = [], historial5p = [];
+let aspectos = [], enunciado = '', numPorque = 1, busy = false;
+let criticidad = null;
+let causeRaizFinal = '';
+
+// ═══════════════════════════════════════════════
+// PROMPTS
+// ═══════════════════════════════════════════════
+const SYS_5W2H = `Eres un consultor experto en mejora continua y metodologías Lean. Guía al usuario para definir su problema de forma conversacional usando el método 5W2H. Haz MÁXIMO 2 preguntas concretas por cada intervención.
+
+Los 7 aspectos clave a recopilar son:
+- WHAT: Qué está fallando específicamente.
+- WHY: Por qué representa un impacto negativo o riesgo.
+- WHERE: Ubicación exacta (área, máquina, proceso, sistema).
+- WHEN: Cuándo ocurre, ventanas temporales o de frecuencia.
+- WHO: Quién lo detectó o a qué roles afecta.
+- HOW: De qué manera se manifiesta (síntomas del fallo).
+- HOW_MUCH: Costes, tiempos muertos o unidades afectadas asociados.
+
+DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO (Sin bloques Markdown, sin texto plano fuera):
+{
+  "aspectos_cubiertos": ["WHAT","WHERE"],
+  "mensaje": "Tu feedback conversacional y siguientes preguntas cortas aquí.",
+  "enunciado": null,
+  "listo": false
+}
+
+Cuando tengas evidencia de los 7 aspectos, redacta en "enunciado" un resumen técnico del problema y valida con el usuario si desea avanzar. Si confirma, pon "listo": true.`;
+
+const SYS_5P = `Eres un consultor experto en análisis de causa raíz con metodología 5 Porqués. Guía al usuario de forma constructiva.
+
+REGLAS DE VALIDACIÓN:
+- Acepta causas técnicas, de proceso, de sistema Y también errores humanos si están contextualizados (falta de formación, procedimiento poco claro, carga de trabajo excesiva). Los errores humanos son válidos cuando revelan una vulnerabilidad real del sistema.
+- RECHAZA solo si la respuesta no tiene vínculo causa-efecto con el paso anterior, es completamente circular o demasiado vaga.
+- Si rechazas, SIEMPRE incluye en "sugerencias" 2-3 alternativas concretas basadas en el contexto, o haz preguntas que guíen hacia una causa más precisa. Nunca dejes al usuario sin dirección.
+- Si la respuesta es parcialmente válida, acéptala y sugiere cómo profundizar más.
+
+DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO:
+{
+  "valida": true,
+  "rechazo_motivo": null,
+  "sugerencias": null,
+  "mensaje": "Feedback constructivo y siguiente pregunta para profundizar.",
+  "siguiente": "AVANZAR",
+  "causa_raiz": null
+}
+
+"siguiente" solo acepta: "AVANZAR" | "REPETIR" | "CAUSA_RAIZ"
+"sugerencias": array de strings con alternativas cuando valida=false, null si valida=true`;
+
+// ═══════════════════════════════════════════════
+// REFS UI
+// ═══════════════════════════════════════════════
+const chat       = document.getElementById('chat');
+const msgEl      = document.getElementById('msg');
+const btnSend    = document.getElementById('btn-send');
+const btnMic     = document.getElementById('btn-mic');
+const badge      = document.getElementById('badge');
+const progPorques = document.getElementById('prog-porques');
+
+// ═══════════════════════════════════════════════
+// AUTOGUARDADO (localStorage)
+// ═══════════════════════════════════════════════
+const LS_KEY = 'cra_sesion_v1';
+const LS_KEY_API = 'cra_apikey';
+
+function guardarEstado() {
+  const estado = {
+    fase, aspectos, enunciado, numPorque, criticidad, causeRaizFinal,
+    historial5w2h, historial5p,
+    chatHTML: chat.innerHTML,
+    badge_text: badge.innerText,
+    badge_class: badge.className,
+    ts: Date.now()
+  };
+  try { localStorage.setItem(LS_KEY, JSON.stringify(estado)); } catch(e) {}
+}
+
+function cargarEstado(estado) {
+  fase          = estado.fase          || '5W2H';
+  aspectos      = estado.aspectos      || [];
+  enunciado     = estado.enunciado     || '';
+  numPorque     = estado.numPorque     || 1;
+  criticidad    = estado.criticidad    || null;
+  causeRaizFinal= estado.causeRaizFinal|| '';
+  historial5w2h = estado.historial5w2h || [];
+  historial5p   = estado.historial5p   || [];
+  chat.innerHTML = estado.chatHTML     || '';
+
+  badge.innerText   = estado.badge_text  || 'Fase 1 · Definición 5W2H';
+  badge.className   = estado.badge_class || '';
+
+  // Restaurar UI 5W2H
+  aspectos.forEach(asp => {
+    const el = document.getElementById(`t-${asp}`);
+    if(el) { el.classList.add('ok'); el.querySelector('.w-status').innerText = 'Listo'; }
+  });
+
+  // Restaurar UI 5P
+  if(fase === '5P' || fase === 'DONE') {
+    progPorques.classList.add('active');
+    for(let i = 1; i < numPorque; i++) {
+      document.getElementById(`p${i}`)?.classList.replace('activo','hecho') ||
+      document.getElementById(`p${i}`)?.classList.add('hecho');
+      document.getElementById(`c${i}`)?.classList.add('hecho');
+    }
+    if(fase === '5P') document.getElementById(`p${numPorque}`)?.classList.add('activo');
+  }
+
+  // Restaurar criticidad
+  if(criticidad) setCriticidad(criticidad, false);
+
+  // Restaurar indicador de fase
+  actualizarIndicadorFase();
+
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function limpiarEstado() {
+  localStorage.removeItem(LS_KEY);
+}
+
+// ═══════════════════════════════════════════════
+// INDICADOR DE FASE (4 dots)
+// ═══════════════════════════════════════════════
+function actualizarIndicadorFase() {
+  const dots = ['fd-config','fd-5w2h','fd-5p','fd-done'];
+  const labels = ['Configuración','5W2H','5 Porqués','Finalizado'];
+  let idx = 0;
+  if(fase === '5W2H') idx = 1;
+  else if(fase === '5P')   idx = 2;
+  else if(fase === 'DONE') idx = 3;
+
+  dots.forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.classList.remove('activa','hecha');
+    if(i < idx)  el.classList.add('hecha');
+    if(i === idx) el.classList.add('activa');
+  });
+  document.getElementById('fase-label-text').innerText = labels[idx];
+}
+
+// ═══════════════════════════════════════════════
+// CRITICIDAD
+// ═══════════════════════════════════════════════
+function setCriticidad(nivel, guardar = true) {
+  criticidad = nivel;
+  ['baja','media','alta'].forEach(n => {
+    document.getElementById(`crit-${n}`)?.classList.remove(`selected-${n}`);
+  });
+  document.getElementById(`crit-${nivel}`)?.classList.add(`selected-${nivel}`);
+  if(guardar) guardarEstado();
+}
+
+// ═══════════════════════════════════════════════
+// API OpenRouter
+// ═══════════════════════════════════════════════
+async function llamarGemini(systemInstruction, history, nuevoMensaje) {
+  const url = 'https://openrouter.ai/api/v1/chat/completions';
+
+  const criticidadCtx = criticidad
+    ? `\n\n[CONTEXTO ADICIONAL: La criticidad del problema es ${criticidad.toUpperCase()}. Adapta la profundidad del análisis en consecuencia.]`
+    : '';
+
+  let messages = [{ role: 'system', content: systemInstruction + criticidadCtx + '\n\nIMPORTANTE: Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin bloques markdown.' }];
+  history.forEach(h => {
+    messages.push({ role: h.role === 'model' ? 'assistant' : h.role, content: h.text });
+  });
+  messages.push({ role: 'user', content: nuevoMensaje });
+
+  const payload = {
+    model: 'openrouter/auto',
+    messages,
+    response_format: { type: 'json_object' },
+    plugins: [{ id: 'response-healing' }]
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${APIKEY}`,
+      'HTTP-Referer': 'https://joaquingbx.github.io/causa-raiz-5W2H/',
+      'X-Title': 'Analizador Causa Raiz 5W2H'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+  if(!response.ok) {
+    const msg = data?.error?.message || data?.error?.metadata?.raw || JSON.stringify(data?.error) || `HTTP ${response.status}`;
+    throw new Error(msg);
+  }
+
+  let texto = data.choices[0].message.content;
+  texto = texto.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
+  return texto;
+}
+
+// ═══════════════════════════════════════════════
+// CHAT HELPERS
+// ═══════════════════════════════════════════════
+function appendBurbuja(texto, clase) {
+  const div = document.createElement('div');
+  div.className = `burbuja ${clase}`;
+  div.innerHTML = texto;
+
+  if (clase === 'user') {
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'btn-edit-msg';
+    btnEdit.title = 'Editar y reenviar';
+    btnEdit.textContent = '✏️';
+    div.appendChild(btnEdit);
+
+    btnEdit.addEventListener('click', () => {
+      if(busy) return;
+      const originalText = div.innerHTML.replace(/<button.*<\/button>/s, '').trim();
+      div.classList.add('editing');
+      div.innerHTML = `
+        <textarea class="edit-textarea" rows="3">${originalText}</textarea>
+        <div class="edit-actions">
+          <button class="btn-edit-cancel">Cancelar</button>
+          <button class="btn-edit-ok">✔ Reenviar</button>
+        </div>`;
+      const ta = div.querySelector('.edit-textarea');
+      ta.style.height = ta.scrollHeight + 'px';
+
+      div.querySelector('.btn-edit-cancel').addEventListener('click', () => {
+        div.classList.remove('editing');
+        div.innerHTML = originalText;
+        const btnE2 = document.createElement('button');
+        btnE2.className = 'btn-edit-msg'; btnE2.title = 'Editar y reenviar'; btnE2.textContent = '✏️';
+        div.appendChild(btnE2);
+      });
+
+      div.querySelector('.btn-edit-ok').addEventListener('click', () => {
+        const newText = ta.value.trim();
+        if(!newText) return;
+        let next = div.nextSibling;
+        while(next){ const tmp = next.nextSibling; next.remove(); next = tmp; }
+        div.classList.remove('editing');
+        div.innerHTML = newText;
+        const btnE3 = document.createElement('button');
+        btnE3.className = 'btn-edit-msg'; btnE3.title = 'Editar y reenviar'; btnE3.textContent = '✏️';
+        div.appendChild(btnE3);
+        if(fase === '5W2H' && historial5w2h.length > 0) {
+          const idx = historial5w2h.map(h=>h.role).lastIndexOf('user');
+          if(idx > -1) historial5w2h.splice(idx, 1);
+        } else if(fase === '5P' && historial5p.length > 0) {
+          const idx = historial5p.map(h=>h.role).lastIndexOf('user');
+          if(idx > -1) historial5p.splice(idx, 1);
+        }
+        enviar(newText);
+      });
+    });
+  }
+
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  guardarEstado();
+  return div;
+}
+
+function appendTyping() {
+  const div = document.createElement('div');
+  div.className = 'burbuja ia typing';
+  div.innerHTML = '<span></span><span></span><span></span>';
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+// ═══════════════════════════════════════════════
+// LÓGICA PRINCIPAL
+// ═══════════════════════════════════════════════
+async function inicializarAnalisis() {
+  actualizarIndicadorFase();
+  showBusy(true);
+  const loader = appendTyping();
+  try {
+    const resText = await llamarGemini(SYS_5W2H, [], "Hola, quiero iniciar un nuevo análisis de causa raíz.");
+    loader.remove();
+    const data = JSON.parse(resText);
+    appendBurbuja(data.mensaje, 'ia');
+    historial5w2h.push({ role: 'user', text: "Hola, quiero iniciar un nuevo análisis de causa raíz." });
+    historial5w2h.push({ role: 'model', text: resText });
+    fase = '5W2H';
+    actualizarIndicadorFase();
+  } catch(err) {
+    loader.remove();
+    appendBurbuja(`❌ Error de conexión: ${err.message}`, 'rechazo');
+  } finally {
+    showBusy(false);
+  }
+}
+
+async function enviarMensajeUsuario() {
+  const texto = msgEl.value.trim();
+  if(!texto || busy) return;
+  msgEl.value = '';
+  msgEl.style.height = 'auto';
+  await enviar(texto);
+}
+
+async function enviar(texto) {
+  appendBurbuja(texto, 'user');
+  showBusy(true);
+  const loader = appendTyping();
+  try {
+    if(fase === '5W2H') {
+      const resText = await llamarGemini(SYS_5W2H, historial5w2h, texto);
+      loader.remove();
+      const data = JSON.parse(resText);
+
+      historial5w2h.push({ role: 'user', text: texto });
+      historial5w2h.push({ role: 'model', text: resText });
+
+      if(data.aspectos_cubiertos) {
+        data.aspectos_cubiertos.forEach(asp => {
+          const el = document.getElementById(`t-${asp}`);
+          if(el) { el.classList.add('ok'); el.querySelector('.w-status').innerText = 'Listo'; }
+          if(!aspectos.includes(asp)) aspectos.push(asp);
+        });
+      }
+
+      if(data.enunciado) {
+        enunciado = data.enunciado;
+        appendBurbuja(`
+          <div class="enunciado-box">
+            <h3>Enunciado Estructurado del Problema</h3>
+            <p>${data.enunciado}</p>
+          </div>
+          <br>${data.mensaje}
+        `, 'especial');
+      } else {
+        appendBurbuja(data.mensaje, 'ia');
+      }
+
+      if(data.listo === true) {
+        fase = '5P';
+        badge.innerText = 'Fase 2 · Análisis 5 Porqués';
+        badge.className = 'fase2';
+        progPorques.classList.add('active');
+        document.getElementById('p1').classList.add('activo');
+        actualizarIndicadorFase();
+
+        const loaderP1 = appendTyping();
+        try {
+          const promptP1 = `Con base en el enunciado del problema: "${enunciado}", propón el Porqué Nº 1 más probable como causa directa e inmediata. Formula una hipótesis técnica concreta y breve, y pregunta al usuario si está de acuerdo o si quiere ajustarla. Responde en JSON válido con los campos: valida, rechazo_motivo, sugerencias, mensaje, siguiente (usa "AVANZAR"), causa_raiz.`;
+          const resP1 = await llamarGemini(SYS_5P, [], promptP1);
+          loaderP1.remove();
+          const dataP1 = JSON.parse(resP1);
+          historial5p.push({ role: 'assistant', text: dataP1.mensaje });
+          appendBurbuja(dataP1.mensaje, 'ia');
+        } catch(e) {
+          loaderP1.remove();
+          appendBurbuja('¿Cuál crees que fue la causa directa e inmediata que originó este problema?', 'ia');
+        }
+      }
+
+    } else if(fase === '5P') {
+      const promptPrevio = `El enunciado base del problema es: "${enunciado}". Estamos analizando el Porqué Nº ${numPorque}.`;
+      const resText = await llamarGemini(SYS_5P, historial5p, `${promptPrevio}\nRespuesta del usuario: ${texto}`);
+      loader.remove();
+      const data = JSON.parse(resText);
+
+      if(data.valida === false) {
+        appendBurbuja(`
+          <div class="rechazo-lbl">Respuesta no aceptada</div>
+          <p><strong>Motivo:</strong> ${data.rechazo_motivo}</p>
+          <hr style="margin:10px 0; border:0; border-top:1px solid var(--danger);">
+          <p>${data.mensaje}</p>
+          ${data.sugerencias && data.sugerencias.length ? `
+            <div style="margin-top:10px;">
+              <strong>💡 Alternativas que puedes considerar:</strong>
+              <ul style="margin:8px 0 0 0; padding-left:18px;">
+                ${data.sugerencias.map(s => `<li style="margin-bottom:4px;">${s}</li>`).join('')}
+              </ul>
+            </div>` : ''}
+        `, 'rechazo');
+      } else {
+        historial5p.push({ role: 'user', text: texto });
+        historial5p.push({ role: 'model', text: resText });
+        appendBurbuja(data.mensaje, 'ia');
+
+        if(data.siguiente === "AVANZAR" && numPorque < 5) {
+          document.getElementById(`p${numPorque}`).className = 'pstep hecho';
+          if(document.getElementById(`c${numPorque}`)) document.getElementById(`c${numPorque}`).className = 'pconn hecho';
+          numPorque++;
+          document.getElementById(`p${numPorque}`).className = 'pstep activo';
+        } else if(data.siguiente === "CAUSA_RAIZ" || numPorque >= 5) {
+          causeRaizFinal = data.causa_raiz || texto;
+          document.getElementById(`p${numPorque}`).className = 'pstep hecho';
+          fase = 'DONE';
+          badge.innerText = 'Análisis Finalizado';
+          badge.className = 'done';
+          actualizarIndicadorFase();
+          appendBurbuja(`
+            <div class="causa-raiz-box">
+              <h2>🎯 Causa Raíz Identificada</h2>
+              <p>${causeRaizFinal}</p>
+            </div>
+          `, 'especial');
+          showBusy(true);
+          guardarEstado();
+          return;
+        }
+      }
+    }
+
+    guardarEstado();
+  } catch(err) {
+    loader.remove();
+    appendBurbuja(`❌ Error al procesar: ${err.message}`, 'rechazo');
+  } finally {
+    if(fase !== 'DONE') showBusy(false);
+  }
+}
+
+function showBusy(isBusy) {
+  busy = isBusy;
+  btnSend.disabled = isBusy;
+  msgEl.disabled   = isBusy;
+}
+
+// ═══════════════════════════════════════════════
+// EXPORTAR PDF
+// ═══════════════════════════════════════════════
+function exportarPDF() {
+  const { jsPDF } = window.jspdf;
+  if(!jsPDF){ alert('La librería PDF no está disponible. Verifica la conexión.'); return; }
+
+  const hoy = new Date();
+  const fecha = `${hoy.getFullYear()}_${String(hoy.getMonth()+1).padStart(2,'0')}_${String(hoy.getDate()).padStart(2,'0')}`;
+  const desc = prompt('Introduce una descripción corta para el nombre del archivo:','analisis');
+  if(desc === null) return; // cancelado
+  const descLimpio = (desc || 'analisis').trim().replace(/[^a-zA-Z0-9_\-áéíóúñÁÉÍÓÚÑ]/g,'_').substring(0,40);
+  const nombreArchivo = `Analisis_C_R_${fecha}_${descLimpio}.pdf`;
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210, ML = 18, MR = 18, TW = W - ML - MR;
+  let y = 20;
+
+  const colorFondo  = [12, 14, 20];
+  const colorAccent = [123, 110, 246];
+  const colorGreen  = [31, 217, 138];
+  const colorText   = [230, 232, 240];
+  const colorMuted  = [107, 112, 128];
+  const colorDanger = [240, 100, 100];
+
+  // Fondo oscuro completo
+  doc.setFillColor(...colorFondo);
+  doc.rect(0, 0, 210, 297, 'F');
+
+  // ── CABECERA ──
+  doc.setFillColor(...colorAccent);
+  doc.roundedRect(ML, y, TW, 18, 3, 3, 'F');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(14);
+  doc.setTextColor(255,255,255);
+  doc.text('🔍  INFORME DE ANÁLISIS DE CAUSA RAÍZ', ML + TW/2, y + 11, { align:'center' });
+  y += 26;
+
+  // Meta-info
+  const metaItems = [
+    ['Fecha del informe:', `${hoy.toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}`],
+    ['Criticidad:', criticidad ? criticidad.toUpperCase() : 'No especificada'],
+    ['Estado:', fase === 'DONE' ? 'Análisis Finalizado' : 'En progreso'],
+  ];
+  doc.setFontSize(9);
+  metaItems.forEach(([lbl, val]) => {
+    doc.setFont('helvetica','bold'); doc.setTextColor(...colorMuted); doc.text(lbl, ML, y);
+    doc.setFont('helvetica','normal'); doc.setTextColor(...colorText);
+    const critColor = criticidad === 'alta' ? colorDanger : criticidad === 'media' ? [245,166,35] : colorGreen;
+    if(lbl.includes('Criticidad') && criticidad) doc.setTextColor(...critColor);
+    doc.text(val, ML + 40, y);
+    y += 6;
+  });
+  y += 4;
+
+  // ── SEPARADOR ──
+  const hr = () => {
+    doc.setDrawColor(...colorAccent);
+    doc.setLineWidth(0.3);
+    doc.line(ML, y, ML + TW, y);
+    y += 6;
+  };
+
+  // ── SECCIÓN 5W2H ──
+  const seccion = (titulo, color) => {
+    if(y > 260) { doc.addPage(); doc.setFillColor(...colorFondo); doc.rect(0,0,210,297,'F'); y = 20; }
+    doc.setFillColor(...color);
+    doc.roundedRect(ML, y, TW, 8, 2, 2, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    doc.setTextColor(255,255,255);
+    doc.text(titulo.toUpperCase(), ML + 4, y + 5.5);
+    y += 13;
+  };
+
+  const texto = (txt, indent = 0, italic = false) => {
+    if(!txt) return;
+    doc.setFont('helvetica', italic ? 'italic' : 'normal');
+    doc.setFontSize(9); doc.setTextColor(...colorText);
+    const lines = doc.splitTextToSize(txt, TW - indent);
+    lines.forEach(l => {
+      if(y > 270) { doc.addPage(); doc.setFillColor(...colorFondo); doc.rect(0,0,210,297,'F'); y = 20; }
+      doc.text(l, ML + indent, y);
+      y += 5.5;
+    });
+    y += 2;
+  };
+
+  seccion('Fase 1 — Definición del Problema (5W2H)', colorAccent);
+
+  const labels5w2h = {
+    WHAT:'Qué (What)', WHY:'Por qué (Why)', WHERE:'Dónde (Where)',
+    WHEN:'Cuándo (When)', WHO:'Quién (Who)', HOW:'Cómo (How)', HOW_MUCH:'Cuánto (How Much)'
+  };
+  const todos5w2h = ['WHAT','WHY','WHERE','WHEN','WHO','HOW','HOW_MUCH'];
+
+  todos5w2h.forEach(asp => {
+    const el = document.getElementById(`t-${asp}`);
+    const cubierto = el?.classList.contains('ok');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    doc.setTextColor(...(cubierto ? colorGreen : colorMuted));
+    doc.text(`${cubierto ? '✓' : '○'}  ${labels5w2h[asp]}`, ML + 2, y);
+    doc.setTextColor(...(cubierto ? colorText : colorMuted));
+    doc.setFont('helvetica','normal');
+    doc.text(cubierto ? 'Completado' : 'Pendiente', ML + TW - 2, y, {align:'right'});
+    y += 7;
+  });
+  y += 4;
+
+  if(enunciado) {
+    doc.setFillColor(30, 34, 48);
+    doc.roundedRect(ML, y, TW, 6, 2, 2, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(...colorAccent);
+    doc.text('ENUNCIADO ESTRUCTURADO DEL PROBLEMA', ML + 3, y + 4.2);
+    y += 10;
+    texto(enunciado, 2, true);
+    y += 2;
+  }
+
+  hr();
+
+  // ── SECCIÓN 5 PORQUÉS ──
+  seccion('Fase 2 — Cadena de Causalidad (5 Porqués)', [80, 65, 160]);
+
+  const labels5p = ['Primer Porqué','Segundo Porqué','Tercer Porqué','Cuarto Porqué','Quinto Porqué'];
+  historial5p.filter(h => h.role === 'user').forEach((h, i) => {
+    if(i >= 5) return;
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...colorGreen);
+    doc.text(`${i+1}. ${labels5p[i]}`, ML + 2, y); y += 6;
+    texto(h.text, 6);
+  });
+
+  if(causeRaizFinal) {
+    hr();
+    seccion('Causa Raíz Identificada', colorGreen);
+    doc.setFillColor(19, 22, 31);
+    doc.roundedRect(ML, y, TW, 8, 3, 3, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...colorGreen);
+    doc.text('🎯', ML + 4, y + 5.5);
+    y += 12;
+    texto(causeRaizFinal, 2);
+  }
+
+  // ── PIE ──
+  const totalPages = doc.internal.getNumberOfPages();
+  for(let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...colorMuted);
+    doc.text(`Generado por Analizador de Causa Raíz · ${hoy.toLocaleDateString('es-ES')}`, ML, 290);
+    doc.text(`Página ${i} / ${totalPages}`, W - MR, 290, {align:'right'});
+  }
+
+  doc.save(nombreArchivo);
+}
+
+// ═══════════════════════════════════════════════
+// COPIAR MARKDOWN
+// ═══════════════════════════════════════════════
+function copiarMarkdown() {
+  const hoy = new Date().toLocaleDateString('es-ES',{year:'numeric',month:'long',day:'numeric'});
+  const critEmoji = { baja:'🟢', media:'🟡', alta:'🔴' };
+
+  let md = `# 📋 Análisis de Causa Raíz\n\n`;
+  md += `**Fecha:** ${hoy}  \n`;
+  md += `**Criticidad:** ${criticidad ? `${critEmoji[criticidad]} ${criticidad.charAt(0).toUpperCase()+criticidad.slice(1)}` : 'No especificada'}  \n`;
+  md += `**Estado:** ${fase === 'DONE' ? '✅ Finalizado' : '🔄 En progreso'}\n\n`;
+  md += `---\n\n`;
+
+  md += `## Fase 1 — Definición 5W2H\n\n`;
+  const labels = { WHAT:'Qué (What)', WHY:'Por qué (Why)', WHERE:'Dónde (Where)', WHEN:'Cuándo (When)', WHO:'Quién (Who)', HOW:'Cómo (How)', HOW_MUCH:'Cuánto (How Much)' };
+  ['WHAT','WHY','WHERE','WHEN','WHO','HOW','HOW_MUCH'].forEach(asp => {
+    const ok = document.getElementById(`t-${asp}`)?.classList.contains('ok');
+    md += `- ${ok ? '✅' : '⬜'} **${labels[asp]}**\n`;
+  });
+  md += '\n';
+
+  if(enunciado) {
+    md += `### Enunciado del Problema\n\n> ${enunciado}\n\n`;
+  }
+
+  md += `---\n\n## Fase 2 — Cadena de Causalidad (5 Porqués)\n\n`;
+  const users5p = historial5p.filter(h => h.role === 'user');
+  if(users5p.length) {
+    users5p.forEach((h, i) => {
+      md += `**Porqué ${i+1}:** ${h.text}\n\n`;
+    });
+  } else {
+    md += '_No iniciada aún._\n\n';
+  }
+
+  if(causeRaizFinal) {
+    md += `---\n\n## 🎯 Causa Raíz Identificada\n\n**${causeRaizFinal}**\n`;
+  }
+
+  navigator.clipboard.writeText(md).then(() => {
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2200);
+  }).catch(() => {
+    alert('No se pudo copiar. Intenta desde Chrome/Edge.');
+  });
+}
+
+// ═══════════════════════════════════════════════
+// REINICIAR TODO
+// ═══════════════════════════════════════════════
+function reiniciarTodo() {
+  if(!confirm('¿Borrar TODO el progreso y empezar de cero? Esto eliminará el autoguardado.')) return;
+  localStorage.removeItem(LS_KEY);
+  localStorage.removeItem(LS_KEY_API);
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════
+// SETUP: detectar sesión guardada
+// ═══════════════════════════════════════════════
+(function detectarSesionGuardada() {
+  const savedKey = localStorage.getItem(LS_KEY_API);
+  if(savedKey) document.getElementById('api-input').value = savedKey;
+
+  const savedSession = localStorage.getItem(LS_KEY);
+  if(savedSession) {
+    try {
+      const estado = JSON.parse(savedSession);
+      // Solo mostrar banner si hay progreso real (al menos un mensaje en el chat)
+      if(estado.chatHTML && estado.chatHTML.trim().length > 50) {
+        const banner = document.getElementById('restore-banner');
+        banner.style.display = 'block';
+
+        document.getElementById('btn-restore-yes').addEventListener('click', () => {
+          const key = document.getElementById('api-input').value.trim();
+          if(!key){ alert('Introduce primero la API Key.'); return; }
+          APIKEY = key;
+          localStorage.setItem(LS_KEY_API, key);
+          document.getElementById('setup').style.display = 'none';
+          document.getElementById('app').style.display = 'grid';
+          cargarEstado(estado);
+          if(fase !== 'DONE') showBusy(false);
+        });
+
+        document.getElementById('btn-restore-no').addEventListener('click', () => {
+          limpiarEstado();
+          banner.style.display = 'none';
+        });
+      }
+    } catch(e) { limpiarEstado(); }
+  }
+})();
+
+// ── BOTÓN INICIO ──
+document.getElementById('btn-start').addEventListener('click', () => {
+  const key = document.getElementById('api-input').value.trim();
+  if(!key) return alert('Por favor, introduce una API Key válida.');
+  APIKEY = key;
+  localStorage.setItem(LS_KEY_API, key);
+  limpiarEstado(); // nueva sesión limpia
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('app').style.display = 'grid';
+  inicializarAnalisis();
+});
+
+document.getElementById('btn-nuevo').addEventListener('click', reiniciarTodo);
+
+// ── AUTO-RESIZE TEXTAREA ──
+msgEl.addEventListener('input', () => {
+  msgEl.style.height = 'auto';
+  msgEl.style.height = msgEl.scrollHeight + 'px';
+});
+
+btnSend.addEventListener('click', enviarMensajeUsuario);
+msgEl.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); enviarMensajeUsuario(); }
+});
+
+// ── MICRÓFONO ──
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if(SpeechRecognition) {
+  const recog = new SpeechRecognition();
+  recog.lang = 'es-ES'; recog.continuous = false; recog.interimResults = false;
+  let recording = false;
+  btnMic.addEventListener('click', () => { if(recording) recog.stop(); else recog.start(); });
+  recog.onstart = () => { recording = true; btnMic.classList.add('rec'); btnMic.title = 'Detener dictado'; };
+  recog.onend   = () => { recording = false; btnMic.classList.remove('rec'); btnMic.title = 'Dictar por voz'; };
+  recog.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    msgEl.value += (msgEl.value ? ' ' : '') + transcript;
+    msgEl.dispatchEvent(new Event('input'));
+  };
+  recog.onerror = (e) => { console.warn('Error de reconocimiento:', e.error); recording = false; btnMic.classList.remove('rec'); };
+} else {
+  btnMic.style.display = 'none';
+}
+</script>
+</body>
+</html>
