@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analizador de Causa Raíz - Desktop</title>
+  <style>
+    :root {
+      --bg:      #0C0E14;
+      --card:    #13161F;
+      --border:  #1E2230;
+      --accent:  #7B6EF6;
+      --green:   #1FD98A;
+      --warn:    #F5A623;
+      --danger:  #F06464;
+      --text:    #E6E8F0;
+      --muted:   #6B7080;
+      --radius:  12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden; touch-action: manipulation;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+
+    #setup {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 40px; gap: 24px; z-index: 100; overflow-y: auto;
+    }
+    #setup .setup-container {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 40px; max-width: 480px; width: 100%; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,.5);
+    }
+    .logo { font-size: 3.5rem; margin-bottom: 16px; }
+    h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px; }
+    #setup p { color: var(--muted); font-size: .9rem; line-height: 1.6; margin-bottom: 24px; }
+    #api-input {
+      width: 100%; padding: 14px 16px; background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 10px; color: #fff; font-family: monospace; font-size: .9rem;
+      margin-bottom: 16px; text-align: center; transition: border-color .2s; outline: none;
+    }
+    #api-input:focus { border-color: var(--accent); }
+    #btn-start {
+      width: 100%; padding: 14px; background: var(--accent); border: none; border-radius: 10px;
+      color: #fff; font-weight: 600; font-size: 1rem; cursor: pointer; transition: opacity .2s;
+    }
+    #btn-start:hover { opacity: .9; }
+    .setup-note { font-size: .8rem !important; margin-top: 16px; line-height: 1.5; color: var(--muted); }
+    .setup-note a { color: var(--accent); text-decoration: none; }
+    .setup-note a:hover { text-decoration: underline; }
+
+    #app { display: none; height: 100vh; grid-template-columns: 1fr 380px; background: var(--bg); }
+    .main-chat-container { display: flex; flex-direction: column; height: 100vh; min-height: 0; border-right: 1px solid var(--border); }
+    
+    #header {
+      padding: 16px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--card);
+    }
+    .header-title { display: flex; align-items: center; gap: 12px; }
+    .header-title h1 { font-size: 1.15rem; font-weight: 700; margin: 0; }
+    #badge {
+      padding: 4px 12px; background: var(--accent); color: #fff;
+      border-radius: 20px; font-size: .75rem; font-weight: 700; letter-spacing: .3px; transition: all .3s;
+    }
+    #badge.fase2 { background: var(--warn); color: #000; }
+    #badge.done { background: var(--green); color: #000; }
+
+    #chat { flex: 1; padding: 24px; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 16px; background: var(--bg); scroll-behavior: smooth; }
+    .burbuja {
+      max-width: 75%; padding: 14px 18px; border-radius: var(--radius); font-size: .95rem; line-height: 1.6;
+      word-break: break-word; animation: pop .2s ease;
+    }
+    @keyframes pop { from{opacity:0;transform:scale(.98) translateY(5px)} to{opacity:1;transform:none} }
+    .burbuja.ia { background: var(--card); border: 1px solid var(--border); align-self: flex-start; border-top-left-radius: 2px; }
+    .burbuja.user { background: var(--accent); color: #fff; align-self: flex-end; border-top-right-radius: 2px; position: relative; padding-right: 36px; }
+    .btn-edit-msg { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.2); border: none; border-radius: 6px; color: #fff; cursor: pointer; font-size: .75rem; padding: 2px 6px; opacity: 0; transition: opacity .2s; }
+    .burbuja.user:hover .btn-edit-msg { opacity: 1; }
+    .burbuja.user.editing { background: var(--card); color: var(--text); border: 1px solid var(--accent); padding: 8px; }
+    .edit-textarea { width: 100%; background: transparent; border: none; color: var(--text); font-size: .95rem; line-height: 1.6; resize: none; outline: none; font-family: inherit; }
+    .edit-actions { display: flex; gap: 8px; margin-top: 6px; justify-content: flex-end; }
+    .btn-edit-ok { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: .8rem; }
+    .btn-edit-cancel { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: .8rem; }
+    .burbuja.rechazo { border-color: var(--danger); background: rgba(240,100,100,.06); align-self: flex-start; border: 1px solid var(--danger); }
+    .burbuja.especial { border-color: var(--accent); background: rgba(123,110,246,.06); max-width: 100%; width: 100%; border: 1px solid var(--accent); }
+
+    .enunciado-box { margin-top: 12px; background: rgba(123,110,246,0.1); border: 1px solid var(--accent); border-radius: 10px; padding: 14px; text-align: left; }
+    .enunciado-box h3 { font-size: .75rem; color: var(--accent); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+    .causa-raiz-box { background: linear-gradient(135deg, rgba(31,217,138,.1), rgba(123,110,246,.1)); border: 2px solid var(--green); border-radius: 12px; padding: 20px; text-align: center; margin: 10px 0; width: 100%; }
+    .causa-raiz-box h2 { font-size: 1.2rem; color: var(--green); margin-bottom: 8px; }
+    .rechazo-lbl { font-weight: 700; color: var(--danger); margin-bottom: 6px; font-size: .85rem; text-transform: uppercase; }
+
+    #input-area { padding: 16px 24px; border-top: 1px solid var(--border); background: var(--card); }
+    .input-row { display: flex; gap: 12px; align-items: flex-end; max-width: 100%; }
+    
+    #msg {
+      flex: 1; background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 10px; padding: 12px 16px; color: var(--text);
+      font-size: .95rem; resize: none; min-height: 46px; max-height: 200px;
+      font-family: inherit; line-height: 1.5; outline: none; transition: border-color .2s;
+    }
+    #msg:focus { border-color: var(--accent); }
+    
+    .btn-ico {
+      width: 46px; height: 46px; border-radius: 10px; border: none; background: none;
+      color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all .2s; flex-shrink: 0; font-size: 1.2rem;
+    }
+    #btn-send { background: var(--accent); color: #fff; }
+    #btn-send:hover { opacity: .9; }
+    #btn-send:disabled { background: var(--border); color: var(--muted); cursor:not-allowed; }
+    #btn-mic { background: var(--bg); border: 1.5px solid var(--border); color: var(--muted); }
+    #btn-mic:hover { color: var(--text); border-color: var(--muted); }
+    #btn-mic.rec { color: var(--danger); background: rgba(240,100,100,.15); border-color: var(--danger); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% {box-shadow: 0 0 0 0 rgba(240,100,100,0.4)} 50% {box-shadow: 0 0 0 6px rgba(240,100,100,0)} }
+
+    #sidebar { background: var(--card); padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; }
+    .panel-section { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .panel-section h2 { font-size: .85rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+    
+    #prog-5w2h { display: flex; flex-direction: column; gap: 10px; }
+    .wtag {
+      background: var(--card); border: 1.5px solid var(--border); padding: 10px 14px;
+      border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-size: .85rem; font-weight: 600; color: var(--muted); transition: all .3s ease;
+    }
+    .wtag .w-status { font-size: .75rem; background: var(--border); padding: 2px 8px; border-radius: 4px; color: var(--muted); }
+    .wtag.ok { border-color: var(--green); color: var(--green); background: rgba(31,217,138,.04); }
+    .wtag.ok .w-status { background: var(--green); color: #000; }
+
+    #prog-porques { display: flex; flex-direction: column; opacity: .4; pointer-events: none; transition: opacity .3s; }
+    #prog-porques.active { opacity: 1; }
+    .p-row { display: flex; align-items: center; gap: 16px; }
+    .pstep {
+      width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center; background: var(--card);
+      font-size: .85rem; font-weight: 700; color: var(--muted); transition: all .3s; flex-shrink: 0;
+    }
+    .pstep.activo { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(123,110,246,.3); }
+    .pstep.hecho { background: var(--green); border-color: var(--green); color: #000; }
+    .p-text { font-size: .85rem; color: var(--muted); font-weight: 500; }
+    .pstep.activo + .p-text { color: var(--accent); font-weight: 600; }
+    .pstep.hecho + .p-text { color: var(--green); }
+    .pconn { width: 2px; height: 24px; background: var(--border); margin-left: 15px; transition: background .4s; }
+    .pconn.hecho { background: var(--green); }
+
+    #btn-nuevo {
+      padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--text); font-size: .8rem; cursor: pointer; transition: background .2s;
+    }
+    #btn-nuevo:hover { background: var(--border); }
+
+    .typing { display: flex; gap: 5px; padding: 4px 0; align-items: center; }
+    .typing span { width: 8px; height: 8px; background: var(--muted); border-radius: 50%; animation: bounce 1.2s infinite; display: block; }
+    .typing span:nth-child(2) { animation-delay: .2s; }
+    .typing span:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce { 0%,60%,100% {transform:translateY(0)} 30% {transform:translateY(-6px)} }
+
+    @media (max-width: 900px) {
+      #app { grid-template-columns: 1fr; }
+      #sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="setup">
+    <div class="setup-container">
+      <div class="logo">🔍</div>
+      <h1>Analizador de Causa Raíz</h1>
+      <p>Entorno de escritorio profesional para la resolución de problemas complejos mediante marcos metodológicos asistidos por IA.</p>
+      <input id="api-input" type="password" placeholder="Introduce la API Key de OpenRouter (sk-or-...)" autocomplete="off" autocorrect="off" spellcheck="false"/>
+      <button id="btn-start">Iniciar Consola de Análisis →</button>
+      <p class="setup-note">
+        Tu clave de API se almacena a nivel local en tu navegador.<br>
+        Consigue credenciales gratuitas en <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
+      </p>
+    </div>
+  </div>
+
+  <div id="app">
+    <div class="main-chat-container">
+      <div id="header">
+        <div class="header-title">
+          <span>🔍</span>
+          <h1>Análisis de Causa Raíz</h1>
+        </div>
+        <span id="badge">Fase 1 · Definición 5W2H</span>
+        <button id="btn-nuevo">🔄 Reiniciar</button>
+      </div>
+
+      <div id="chat"></div>
+
+      <div id="input-area">
+        <div class="input-row">
+          <button id="btn-mic" class="btn-ico" title="Dictar por voz">🎤</button>
+          <textarea id="msg" rows="1" placeholder="Escribe una respuesta técnica..."></textarea>
+          <button id="btn-send" class="btn-ico" title="Enviar mensaje">➔</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="sidebar">
+      <div class="panel-section">
+        <h2>Matriz de Definición (5W2H)</h2>
+        <div id="prog-5w2h">
+          <div class="wtag" id="t-WHAT"><span>QUÉ (What)</span><span class="w-status">Pendiente</span></div>
+          <div class="wtag" id="t-WHY"><span>POR QUÉ (Why)</span><span class="w-status">Pendiente</span></div>
+          <div class="wtag" id="t-WHERE"><span>DÓNDE (Where)</span><span class="w-status">Pendiente</span></div>
+          <div class="wtag" id="t-WHEN"><span>CUÁNDO (When)</span><span class="w-status">Pendiente</span></div>
+          <div class="wtag" id="t-WHO"><span>QUIÉN (Who)</span><span class="w-status">Pendiente</span></div>
+          <div class="wtag" id="t-HOW"><span>CÓMO (How)</span><span class="w-status">Pendiente</span></div>
+          <div class="wtag" id="t-HOW_MUCH"><span>CUÁNTO (How Much)</span><span class="w-status">Pendiente</span></div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h2>Cadena de Causalidad (5 Porqués)</h2>
+        <div id="prog-porques">
+          <div class="p-row"><div class="pstep" id="p1">1</div><div class="p-text">Primer Porqué</div></div>
+          <div class="pconn" id="c1"></div>
+          <div class="p-row"><div class="pstep" id="p2">2</div><div class="p-text">Segundo Porqué</div></div>
+          <div class="pconn" id="c2"></div>
+          <div class="p-row"><div class="pstep" id="p3">3</div><div class="p-text">Tercer Porqué</div></div>
+          <div class="pconn" id="c3"></div>
+          <div class="p-row"><div class="pstep" id="p4">4</div><div class="p-text">Cuarto Porqué</div></div>
+          <div class="pconn" id="c4"></div>
+          <div class="p-row"><div class="pstep" id="p5">5</div><div class="p-text">Quinto Porqué</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ─── ESTADO INTERNO ───────────────────────────────────
+    let APIKEY = '';
+    let fase = '5W2H';
+    let historial5w2h = [], historial5p = [];
+    let aspectos = [], enunciado = '', numPorque = 1, busy = false;
+
+    // ─── PROMPTS DE INSTRUCCIÓN ───
+    const SYS_5W2H = `Eres un consultor experto en mejora continua y metodologías Lean. Guía al usuario para definir su problema de forma conversacional usando el método 5W2H. Haz MÁXIMO 2 preguntas concretas por cada intervención.
+
+Los 7 aspectos clave a recopilar son:
+- WHAT: Qué está fallando específicamente.
+- WHY: Por qué representa un impacto negativo o riesgo.
+- WHERE: Ubicación exacta (área, máquina, proceso, sistema).
+- WHEN: Cuándo ocurre, ventanas temporales o de frecuencia.
+- WHO: Quién lo detectó o a qué roles afecta.
+- HOW: De qué manera se manifiesta (síntomas del fallo).
+- HOW_MUCH: Costes, tiempos muertos o unidades afectadas asociados.
+
+DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO (Sin bloques Markdown, sin texto plano fuera):
+{
+  "aspectos_cubiertos": ["WHAT","WHERE"],
+  "mensaje": "Tu feedback conversacional y siguientes preguntas cortas aquí.",
+  "enunciado": null,
+  "listo": false
+}
+
+Cuando tengas evidencia de los 7 aspectos, redacta en "enunciado" un resumen técnico del problema y valida con el usuario si desea avanzar. Si confirma, pon "listo": true.`;
+
+    const SYS_5P = `Eres un auditor lógico especializado en los 5 Porqués. Analiza de forma estricta las respuestas del usuario sobre la causa anterior.
+
+RECHAZA si la respuesta:
+- No mantiene un vínculo causa-efecto directo con el paso previo.
+- Atribuye el problema a errores humanos ("el operador se descuidó"), redirige siempre hacia vulnerabilidades del sistema o procesos.
+- Es ambigua o circular.
+
+DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO:
+{
+  "valida": true,
+  "rechazo_motivo": null,
+  "mensaje": "Feedback sobre este nivel de causa y tu siguiente pregunta sobre el porqué de esta situación.",
+  "siguiente": "AVANZAR",
+  "causa_raiz": null
+}
+
+"siguiente" solo acepta: "AVANZAR" | "REPETIR" | "CAUSA_RAIZ"`;
+
+    // ─── INTERFAZ DE USUARIO ───────────────────
+    const chat = document.getElementById('chat');
+    const msgEl = document.getElementById('msg');
+    const btnSend = document.getElementById('btn-send');
+    const btnMic = document.getElementById('btn-mic');
+    const badge = document.getElementById('badge');
+    const progPorques = document.getElementById('prog-porques');
+
+    // Inicializar Clave API
+    document.getElementById('btn-start').addEventListener('click', () => {
+      const key = document.getElementById('api-input').value.trim();
+      if(!key) return alert('Por favor, introduce una API Key válida.');
+      APIKEY = key;
+      document.getElementById('setup').style.display = 'none';
+      document.getElementById('app').style.display = 'grid';
+      inicializarAnalisis();
+    });
+
+    // Auto-expandir Textarea
+    msgEl.addEventListener('input', () => {
+      msgEl.style.height = 'auto';
+      msgEl.style.height = msgEl.scrollHeight + 'px';
+    });
+
+    // Eventos de Envío
+    btnSend.addEventListener('click', enviarMensajeUsuario);
+    msgEl.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        enviarMensajeUsuario();
+      }
+    });
+
+    document.getElementById('btn-nuevo').addEventListener('click', () => location.reload());
+
+    // ─── LLAMADAS A OPENROUTER API ───────────────────
+    async function llamarGemini(systemInstruction, history, nuevoMensaje) {
+      const url = 'https://openrouter.ai/api/v1/chat/completions';
+
+      let messages = [{ role: 'system', content: systemInstruction + '\n\nIMPORTANTE: Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin bloques markdown.' }];
+      history.forEach(h => {
+        messages.push({ role: h.role === 'model' ? 'assistant' : h.role, content: h.text });
+      });
+      messages.push({ role: 'user', content: nuevoMensaje });
+
+      const payload = {
+        model: 'openrouter/auto',
+        messages: messages,
+        response_format: { type: 'json_object' },
+        plugins: [{ id: 'response-healing' }]
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${APIKEY}`,
+          'HTTP-Referer': 'https://joaquingbx.github.io/causa-raiz-5W2H/',
+          'X-Title': 'Analizador Causa Raiz 5W2H'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if(!response.ok) {
+        const msg = data?.error?.message || data?.error?.metadata?.raw || JSON.stringify(data?.error) || `HTTP ${response.status}`;
+        throw new Error(msg);
+      }
+
+      // Limpiar posibles bloques markdown antes de parsear
+      let texto = data.choices[0].message.content;
+      texto = texto.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+      return texto;
+    }
+
+    // ─── LÓGICA DEL PROCESO ───────────────────────
+    function appendBurbuja(texto, clase) {
+      const div = document.createElement('div');
+      div.className = `burbuja ${clase}`;
+      div.innerHTML = texto;
+
+      if (clase === 'user') {
+        const btnEdit = document.createElement('button');
+        btnEdit.className = 'btn-edit-msg';
+        btnEdit.title = 'Editar y reenviar';
+        btnEdit.textContent = '✏️';
+        div.appendChild(btnEdit);
+
+        btnEdit.addEventListener('click', () => {
+          if (busy) return;
+          const originalText = div.innerHTML.replace(/<button.*<\/button>/s, '').trim();
+          div.classList.add('editing');
+          div.innerHTML = `
+            <textarea class="edit-textarea" rows="3">${originalText}</textarea>
+            <div class="edit-actions">
+              <button class="btn-edit-cancel">Cancelar</button>
+              <button class="btn-edit-ok">✔ Reenviar</button>
+            </div>`;
+
+          const ta = div.querySelector('.edit-textarea');
+          ta.style.height = ta.scrollHeight + 'px';
+
+          div.querySelector('.btn-edit-cancel').addEventListener('click', () => {
+            div.classList.remove('editing');
+            div.innerHTML = originalText;
+            const btnE2 = document.createElement('button');
+            btnE2.className = 'btn-edit-msg';
+            btnE2.title = 'Editar y reenviar';
+            btnE2.textContent = '✏️';
+            div.appendChild(btnE2);
+            btnE2.addEventListener('click', btnEdit.onclick = arguments.callee);
+          });
+
+          div.querySelector('.btn-edit-ok').addEventListener('click', () => {
+            const newText = ta.value.trim();
+            if (!newText) return;
+            // Remove all messages after this bubble
+            let next = div.nextSibling;
+            while (next) { const tmp = next.nextSibling; next.remove(); next = tmp; }
+            // Restore bubble with new text
+            div.classList.remove('editing');
+            div.innerHTML = newText;
+            const btnE3 = document.createElement('button');
+            btnE3.className = 'btn-edit-msg';
+            btnE3.title = 'Editar y reenviar';
+            btnE3.textContent = '✏️';
+            div.appendChild(btnE3);
+            // Remove last entry from history and resend
+            if (fase === '5W2H' && historial5w2h.length > 0) {
+              // Remove last user message from history
+              const idx = historial5w2h.map(h=>h.role).lastIndexOf('user');
+              if (idx > -1) historial5w2h.splice(idx, 1);
+            } else if (fase === '5P' && historial5p.length > 0) {
+              const idx = historial5p.map(h=>h.role).lastIndexOf('user');
+              if (idx > -1) historial5p.splice(idx, 1);
+            }
+            enviar(newText);
+          });
+        });
+      }
+
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    function appendTyping() {
+      const div = document.createElement('div');
+      div.className = 'burbuja ia typing';
+      div.innerHTML = '<span></span><span></span><span></span>';
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    async function inicializarAnalisis() {
+      showBusy(true);
+      const loader = appendTyping();
+      try {
+        const resText = await llamarGemini(SYS_5W2H, [], "Hola, quiero iniciar un nuevo análisis de causa raíz.");
+        loader.remove();
+        const data = JSON.parse(resText);
+        appendBurbuja(data.mensaje, 'ia');
+        historial5w2h.push({ role: 'user', text: "Hola, quiero iniciar un nuevo análisis de causa raíz." });
+        historial5w2h.push({ role: 'model', text: resText });
+      } catch (err) {
+        loader.remove();
+        appendBurbuja(`❌ Error de conexión: ${err.message}`, 'rechazo');
+      } finally {
+        showBusy(false);
+      }
+    }
+
+    async function enviarMensajeUsuario() {
+      const texto = msgEl.value.trim();
+      if(!texto || busy) return;
+
+      msgEl.value = '';
+      msgEl.style.height = 'auto';
+      appendBurbuja(texto, 'user');
+
+      showBusy(true);
+      const loader = appendTyping();
+
+      try {
+        if (fase === '5W2H') {
+          const resText = await llamarGemini(SYS_5W2H, historial5w2h, texto);
+          loader.remove();
+          const data = JSON.parse(resText);
+
+          historial5w2h.push({ role: 'user', text: texto });
+          historial5w2h.push({ role: 'model', text: resText });
+
+          // Actualizar UI Lateral 5W2H
+          if (data.aspectos_cubiertos) {
+            data.aspectos_cubiertos.forEach(asp => {
+              const el = document.getElementById(`t-${asp}`);
+              if(el) {
+                el.classList.add('ok');
+                el.querySelector('.w-status').innerText = 'Listo';
+              }
+            });
+          }
+
+          if (data.enunciado) {
+            enunciado = data.enunciado;
+            appendBurbuja(`
+              <div class="enunciado-box">
+                <h3>Enunciado Estructurado del Problema</h3>
+                <p>${data.enunciado}</p>
+              </div>
+              <br>${data.mensaje}
+            `, 'especial');
+          } else {
+            appendBurbuja(data.mensaje, 'ia');
+          }
+
+          if (data.listo === true) {
+            // Cambiar a fase 5 Porqués
+            fase = '5P';
+            badge.innerText = 'Fase 2 · Análisis 5 Porqués';
+            badge.className = 'fase2';
+            progPorques.classList.add('active');
+            document.getElementById('p1').classList.add('activo');
+          }
+
+        } else if (fase === '5P') {
+          const promptPrevio = `El enunciado base del problema es: "${enunciado}". Estamos analizando el Porqué Nº ${numPorque}.`;
+          const resText = await llamarGemini(SYS_5P, historial5p, `${promptPrevio}\nRespuesta del usuario: ${texto}`);
+          loader.remove();
+          const data = JSON.parse(resText);
+
+          if (data.valida === false) {
+            appendBurbuja(`
+              <div class="rechazo-lbl">Lógica de Causalidad Rechazada</div>
+              <p><strong>Motivo:</strong> ${data.rechazo_motivo}</p>
+              <hr style="margin:10px 0; border:0; border-top:1px solid var(--danger);">
+              <p>${data.mensaje}</p>
+            `, 'rechazo');
+          } else {
+            historial5p.push({ role: 'user', text: texto });
+            historial5p.push({ role: 'model', text: resText });
+
+            appendBurbuja(data.mensaje, 'ia');
+
+            if (data.siguiente === "AVANZAR" && numPorque < 5) {
+              document.getElementById(`p${numPorque}`).className = 'pstep hecho';
+              if(document.getElementById(`c${numPorque}`)) document.getElementById(`c${numPorque}`).className = 'pconn hecho';
+              numPorque++;
+              document.getElementById(`p${numPorque}`).className = 'pstep activo';
+            } else if (data.siguiente === "CAUSA_RAIZ" || numPorque >= 5) {
+              document.getElementById(`p${numPorque}`).className = 'pstep hecho';
+              fase = 'DONE';
+              badge.innerText = 'Análisis Finalizado';
+              badge.className = 'done';
+              
+              appendBurbuja(`
+                <div class="causa-raiz-box">
+                  <h2>🎯 Causa Raíz Identificada</h2>
+                  <p>${data.causa_raiz || texto}</p>
+                </div>
+              `, 'especial');
+              showBusy(true); 
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        loader.remove();
+        appendBurbuja(`❌ Error al procesar: ${err.message}`, 'rechazo');
+      } finally {
+        if (fase !== 'DONE') showBusy(false);
+      }
+    }
+
+    function showBusy(isBusy) {
+      busy = isBusy;
+      btnSend.disabled = isBusy;
+      msgEl.disabled = isBusy;
+    }
+
+    // ─── MICRÓFONO (Web Speech API) ───────────────
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recog = new SpeechRecognition();
+      recog.lang = 'es-ES';
+      recog.continuous = false;
+      recog.interimResults = false;
+      let recording = false;
+
+      btnMic.addEventListener('click', () => {
+        if (recording) {
+          recog.stop();
+        } else {
+          recog.start();
+        }
+      });
+
+      recog.onstart = () => {
+        recording = true;
+        btnMic.classList.add('rec');
+        btnMic.title = 'Detener dictado';
+      };
+
+      recog.onend = () => {
+        recording = false;
+        btnMic.classList.remove('rec');
+        btnMic.title = 'Dictar por voz';
+      };
+
+      recog.onresult = (e) => {
+        const transcript = e.results[0][0].transcript;
+        msgEl.value += (msgEl.value ? ' ' : '') + transcript;
+        msgEl.dispatchEvent(new Event('input'));
+      };
+
+      recog.onerror = (e) => {
+        console.warn('Error de reconocimiento:', e.error);
+        recording = false;
+        btnMic.classList.remove('rec');
+      };
+    } else {
+      btnMic.style.display = 'none';
+    }
+
+  </script>
+</body>
+</html>
