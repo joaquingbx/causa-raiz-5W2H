@@ -308,16 +308,17 @@ DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO:
     async function llamarGemini(systemInstruction, history, nuevoMensaje) {
       const url = 'https://openrouter.ai/api/v1/chat/completions';
 
-      let messages = [{ role: 'system', content: systemInstruction }];
+      let messages = [{ role: 'system', content: systemInstruction + '\n\nIMPORTANTE: Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin bloques markdown.' }];
       history.forEach(h => {
         messages.push({ role: h.role === 'model' ? 'assistant' : h.role, content: h.text });
       });
       messages.push({ role: 'user', content: nuevoMensaje });
 
       const payload = {
-        model: 'meta-llama/llama-3.3-70b-instruct:free',
+        model: 'openrouter/auto',
         messages: messages,
-        response_format: { type: 'json_object' }
+        response_format: { type: 'json_object' },
+        plugins: [{ id: 'response-healing' }]
       };
 
       const response = await fetch(url, {
@@ -337,7 +338,10 @@ DEBES RESPONDER EXCLUSIVAMENTE CON UN JSON VÁLIDO:
       }
 
       const data = await response.json();
-      return data.choices[0].message.content;
+      // Limpiar posibles bloques markdown antes de parsear
+      let texto = data.choices[0].message.content;
+      texto = texto.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+      return texto;
     }
 
     // ─── LÓGICA DEL PROCESO ───────────────────────
